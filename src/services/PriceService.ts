@@ -1,7 +1,7 @@
 import { PriceData } from '../models/types';
 
 export class PriceService {
-  static apiKey = 'SWQRNMYI0MA4ZYVJ';
+  static apiKey = process.env.EXPO_PUBLIC_ALPHA_VANTAGE_API_KEY || 'SWQRNMYI0MA4ZYVJ';
 
   static async fetchLivePrice(ticker: string): Promise<PriceData> {
     const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${ticker}&outputsize=compact&apikey=${this.apiKey}`;
