@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { Asset, Portfolio, PriceData, Transaction } from '../models/types';
-import { 
-    getPortfolios, createPortfolio, updatePortfolio, 
-    getAllAssets, createAsset, updateAsset, deleteAsset, 
-    getTransactions, createTransaction, updateTransaction, deleteTransaction 
+import {
+    getPortfolios, createPortfolio, updatePortfolio,
+    getAllAssets, createAsset, updateAsset, deleteAsset,
+    getTransactions, createTransaction, updateTransaction, deleteTransaction
 } from '../db/DatabaseService';
 import { PriceService } from '../services/PriceService';
 
@@ -35,14 +35,53 @@ export const useStore = create<AppState>((set, get) => ({
     loadData: () => {
         set({ loading: true });
         let ports = getPortfolios();
-        if (ports.length === 0) {
-            createPortfolio('Default Portfolio', 'USD');
+
+        // Seed dummy data if no portfolios (other than maybe the default one with no assets) exist
+        if (ports.length === 0 || (ports.length === 1 && getAllAssets().length === 0)) {
+            // Clear if only the default one exists to start fresh with nice dummy data
+            if (ports.length === 0) {
+                const pf1 = createPortfolio('Tech Growth', 'USD');
+                const pf2 = createPortfolio('Retirement Fund', 'USD');
+
+                createAsset({
+                    portfolioId: pf1,
+                    tickerSymbol: 'NVDA',
+                    name: 'NVIDIA Corporation',
+                    assetType: 'Stock' as any,
+                    totalInvested: 325.23,
+                    currentValue: 302.35
+                });
+                createAsset({
+                    portfolioId: pf1,
+                    tickerSymbol: 'ASML',
+                    name: 'ASML Holding',
+                    assetType: 'Stock' as any,
+                    totalInvested: 216.82,
+                    currentValue: 206.24
+                });
+                createAsset({
+                    portfolioId: pf1,
+                    tickerSymbol: 'SMH',
+                    name: 'VanEck Semiconductor ETF',
+                    assetType: 'ETF' as any,
+                    totalInvested: 337.60,
+                    currentValue: 337.01
+                });
+                createAsset({
+                    portfolioId: pf1,
+                    tickerSymbol: 'EWY',
+                    name: 'iShares MSCI South Korea ETF',
+                    assetType: 'ETF' as any,
+                    totalInvested: 433.64,
+                    currentValue: 415.52
+                });
+            }
             ports = getPortfolios();
         }
-        
+
         const assets = getAllAssets();
         const transactions = getTransactions();
-        
+
         set({ portfolios: ports, assets, transactions, loading: false });
         get().fetchPrices();
     },
@@ -95,7 +134,7 @@ export const useStore = create<AppState>((set, get) => ({
         // can still fetch the 1-Day % return for the ticker, which we apply to the current value.
         const { assets, livePrices } = get();
         const updatedPrices = { ...livePrices };
-        
+
         for (const asset of assets) {
             if (!updatedPrices[asset.tickerSymbol]) {
                 try {
