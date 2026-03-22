@@ -1,1 +1,8 @@
 node_modules
+.env
+.expo
+.vscode
+dist
+npm-debug.*
+yarn-debug.*
+yarn-error.*
