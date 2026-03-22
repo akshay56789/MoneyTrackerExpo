@@ -18,6 +18,10 @@ export const AssetRow = ({ asset, livePrice, onEdit, onDelete }: Props) => {
   const profitPercent = invested > 0 ? (profit / invested) * 100 : 0;
   const isProfitPositive = profit >= 0;
 
+  const oneDayPercent = livePrice?.dailyChangePercent || 0;
+  const oneDayValue = current * (oneDayPercent / 100);
+  const is1DPositive = oneDayValue >= 0;
+
   const confirmDelete = () => {
       Alert.alert(
           "Delete Asset",
@@ -57,6 +61,16 @@ export const AssetRow = ({ asset, livePrice, onEdit, onDelete }: Props) => {
           <View style={styles.col}>
               <Text style={styles.label}>Current Value</Text>
               <Text style={styles.value}>${current.toFixed(2)}</Text>
+              {oneDayPercent !== 0 && (
+                <>
+                  <Text style={[styles.subtext, { color: is1DPositive ? theme.colors.accent : theme.colors.danger }]}>
+                     {is1DPositive ? '+' : ''}${oneDayValue.toFixed(2)} (1D)
+                  </Text>
+                  <Text style={[styles.subtext, { color: is1DPositive ? theme.colors.accent : theme.colors.danger }]}>
+                     {is1DPositive ? '+' : ''}{oneDayPercent.toFixed(2)}%
+                  </Text>
+                </>
+              )}
           </View>
 
           <View style={[styles.col, { alignItems: 'flex-end' }]}>
