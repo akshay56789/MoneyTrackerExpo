@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/store';
@@ -7,14 +7,18 @@ import { AssetRow } from '../components/AssetRow';
 import { DonutChart } from '../components/DonutChart';
 import { theme } from '../theme';
 import { Asset, AssetType } from '../../models/types';
+import { Feather } from '@expo/vector-icons';
+import { useSettingsStore } from '../../store/settingsStore';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'PortfolioDetail'>;
 
 export const PortfolioDetailScreen = () => {
   const route = useRoute<DetailRouteProp>();
   const { portfolioId } = route.params;
-  const { assets, livePrices, addAsset, editAsset, removeAsset } = useStore();
+  const { assets, livePrices, addAsset, editAsset, removeAsset, syncPrices, syncing } = useStore();
 
+  const { usdToInr } = useSettingsStore();
+  const [showInInr, setShowInInr] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   
@@ -22,7 +26,11 @@ export const PortfolioDetailScreen = () => {
   const [name, setName] = useState('');
   const [invested, setInvested] = useState('');
   const [current, setCurrent] = useState('');
+  const [units, setUnits] = useState('');
+  const [avgPrice, setAvgPrice] = useState('');
   const [type, setType] = useState<AssetType>(AssetType.Stock);
+  const [region, setRegion] = useState<'US' | 'IN'>('US');
+  const [isSaving, setIsSaving] = useState(false);
 
   const portfolioAssets = assets.filter(a => a.portfolioId === portfolioId);
 
@@ -33,13 +41,30 @@ export const PortfolioDetailScreen = () => {
     const typeTotals = { Stock: 0, ETF: 0, MF: 0 };
     
     portfolioAssets.forEach(a => {
-      tInv += a.totalInvested;
-      tCurr += a.currentValue;
-      typeTotals[a.assetType as keyof typeof typeTotals] += a.currentValue;
+      const isAssetInr = a.region === 'IN';
+      
+      // Normalize values to current view currency
+      let invNorm = a.totalInvested;
+      let currNorm = a.currentValue;
+      
+      if (showInInr && !isAssetInr) {
+        // Convert US Asset to INR for the Aggregate
+        invNorm = a.totalInvested * usdToInr;
+        currNorm = a.currentValue * usdToInr;
+      } else if (!showInInr && isAssetInr) {
+        // Convert IN Asset to USD for the Aggregate
+        invNorm = a.totalInvested / usdToInr;
+        currNorm = a.currentValue / usdToInr;
+      }
+
+      tInv += invNorm;
+      tCurr += currNorm;
+      typeTotals[a.assetType as keyof typeof typeTotals] += currNorm;
       
       const livePrice = livePrices[a.tickerSymbol];
-      if (livePrice && livePrice.dailyChangePercent !== undefined) {
-          t1DVal += (a.currentValue * (livePrice.dailyChangePercent / 100));
+      const dailyChange = livePrice?.dailyChangePercent || a.dailyChangePercent || 0;
+      if (dailyChange !== 0) {
+          t1DVal += (currNorm * (dailyChange / 100));
       }
     });
 
@@ -50,7 +75,7 @@ export const PortfolioDetailScreen = () => {
     ].filter(d => d.value > 0);
 
     return { totalInvested: tInv, totalCurrent: tCurr, donutData: dData, t1D: t1DVal };
-  }, [portfolioAssets, livePrices]);
+  }, [portfolioAssets, livePrices, showInInr, usdToInr]);
 
   const totalProfit = totalCurrent - totalInvested;
   const totalProfitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
@@ -59,10 +84,17 @@ export const PortfolioDetailScreen = () => {
   const isProfitPos = totalProfit >= 0;
   const is1DPos = t1D >= 0;
 
+  // Currency helpers for the header card
+  const headerFmt = (val: number) => {
+    if (showInInr) return `₹${val.toFixed(2)}`;
+    return `$${val.toFixed(2)}`;
+  };
+
   const openCreateModal = () => {
       setEditingId(null);
       setTicker(''); setName(''); setInvested(''); setCurrent('');
-      setType(AssetType.Stock);
+      setUnits(''); setAvgPrice('');
+      setType(AssetType.Stock); setRegion('US');
       setModalVisible(true);
   };
 
@@ -72,32 +104,72 @@ export const PortfolioDetailScreen = () => {
       setName(a.name || '');
       setInvested(a.totalInvested.toString());
       setCurrent(a.currentValue.toString());
+      setUnits(a.totalUnits.toString());
+      setAvgPrice(a.averageCost.toString());
       setType(a.assetType);
+      setRegion(a.region);
       setModalVisible(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (ticker && invested && current) {
+      if (!ticker.match(/^[A-Z0-9.]+$/i)) {
+          Alert.alert("Validation", "Ticker symbol contains invalid characters.");
+          return;
+      }
+
+      setIsSaving(true);
+
+      const u = parseFloat(units) || 1;
+      const avg = parseFloat(avgPrice) || (parseFloat(invested) / u);
+
       const assetData: Asset = {
         portfolioId,
         tickerSymbol: ticker.toUpperCase(),
         name: name.trim(),
         assetType: type,
+        region,
+        totalUnits: u,
+        averageCost: avg,
         totalInvested: parseFloat(invested),
         currentValue: parseFloat(current)
       };
 
-      if (editingId) {
-          editAsset(editingId, assetData);
-      } else {
-          addAsset(assetData);
+      try {
+          if (editingId) {
+              await editAsset(editingId, assetData);
+          } else {
+              await addAsset(assetData);
+          }
+          setModalVisible(false);
+      } catch (error: any) {
+          Alert.alert("Ticker API Error", error.message);
+      } finally {
+          setIsSaving(false);
       }
-      setModalVisible(false);
+    } else {
+        Alert.alert("Missing Fields", "Please populate Ticker, Invested amount, and Current value.");
     }
   };
 
   return (
     <View style={styles.container}>
+      {/* Top Sync Bar */}
+      <View style={styles.syncBar}>
+          <TouchableOpacity style={styles.syncBtn} onPress={syncPrices} disabled={syncing}>
+              {syncing ? <ActivityIndicator color={theme.colors.accent} size="small" /> : <Feather name="refresh-cw" size={16} color={theme.colors.accent} />}
+              <Text style={styles.syncBtnText}>{syncing ? "Syncing APIs..." : "Sync Live Prices"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+              style={[styles.syncBtn, { marginLeft: 8, borderColor: showInInr ? '#FFA726' : theme.colors.navyLight }]}
+              onPress={() => setShowInInr(v => !v)}
+          >
+              <Text style={[styles.syncBtnText, { color: showInInr ? '#FFA726' : theme.colors.textMuted }]}>
+                  {showInInr ? '₹ INR View' : '$ → ₹'}
+              </Text>
+          </TouchableOpacity>
+      </View>
+
       <FlatList
         data={portfolioAssets}
         keyExtractor={a => a.id!.toString()}
@@ -110,11 +182,11 @@ export const PortfolioDetailScreen = () => {
                   <View style={styles.headerRow}>
                       <View style={{flex: 1}}>
                           <Text style={styles.headerLabel}>Total Invested</Text>
-                          <Text style={styles.headerVal}>${totalInvested.toFixed(2)}</Text>
+                          <Text style={styles.headerVal}>{headerFmt(totalInvested)}</Text>
                       </View>
                       <View style={{flex: 1, alignItems: 'center'}}>
                           <Text style={styles.headerLabel}>Current Price</Text>
-                          <Text style={styles.headerVal}>${totalCurrent.toFixed(2)}</Text>
+                          <Text style={styles.headerVal}>{headerFmt(totalCurrent)}</Text>
                       </View>
                   </View>
                   
@@ -124,13 +196,13 @@ export const PortfolioDetailScreen = () => {
                       <View style={{flex: 1}}>
                           <Text style={styles.headerLabel}>Total P&L</Text>
                           <Text style={[styles.headerSubVal, {color: isProfitPos ? theme.colors.accent : theme.colors.danger}]}>
-                              {isProfitPos ? '+' : ''}${totalProfit.toFixed(2)} ({isProfitPos ? '+' : ''}{totalProfitPercent.toFixed(2)}%)
+                              {isProfitPos ? '+' : ''}{headerFmt(totalProfit)} ({isProfitPos ? '+' : ''}{totalProfitPercent.toFixed(2)}%)
                           </Text>
                       </View>
                       <View style={{flex: 1, alignItems: 'center'}}>
                           <Text style={styles.headerLabel}>1D Return</Text>
                           <Text style={[styles.headerSubVal, {color: is1DPos ? theme.colors.accent : theme.colors.danger}]}>
-                              {is1DPos ? '+' : ''}${t1D.toFixed(2)} ({is1DPos ? '+' : ''}{total1DPercent.toFixed(2)}%)
+                              {is1DPos ? '+' : ''}{headerFmt(t1D)} ({is1DPos ? '+' : ''}{total1DPercent.toFixed(2)}%)
                           </Text>
                       </View>
                   </View>
@@ -172,13 +244,21 @@ export const PortfolioDetailScreen = () => {
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>{editingId ? 'Edit Asset' : 'Add Asset'}</Text>
                 
+                {/* Region Selector */}
+                <Text style={styles.label}>Region & API</Text>
+                <View style={styles.typeSelector}>
+                  {(['US', 'IN'] as const).map(r => (
+                    <TouchableOpacity key={r} style={[styles.typeBtn, region === r && styles.typeBtnActive]} onPress={() => setRegion(r)}>
+                      <Text style={[styles.typeBtnText, region === r && styles.typeBtnTextActive]}>{r === 'US' ? 'US (Finnhub)' : 'India (AlphaV)'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Asset Type Selector */}
+                <Text style={styles.label}>Asset Type</Text>
                 <View style={styles.typeSelector}>
                   {(['Stock', 'ETF', 'MF'] as AssetType[]).map(t => (
-                    <TouchableOpacity 
-                      key={t}
-                      style={[styles.typeBtn, type === t && styles.typeBtnActive]}
-                      onPress={() => setType(t)}
-                    >
+                    <TouchableOpacity key={t} style={[styles.typeBtn, type === t && styles.typeBtnActive]} onPress={() => setType(t)}>
                       <Text style={[styles.typeBtnText, type === t && styles.typeBtnTextActive]}>{t}</Text>
                     </TouchableOpacity>
                   ))}
@@ -188,14 +268,23 @@ export const PortfolioDetailScreen = () => {
                 <TextInput style={styles.input} placeholder="Symbol/Ticker (e.g. AAPL)" placeholderTextColor={theme.colors.textMuted} value={ticker} onChangeText={setTicker} autoCapitalize="characters" />
                 
                 <View style={{flexDirection: 'row', gap: 10}}>
-                    <TextInput style={[styles.input, {flex: 1}]} placeholder="Invested Price ($)" placeholderTextColor={theme.colors.textMuted} value={invested} onChangeText={setInvested} keyboardType="numeric" />
-                    <TextInput style={[styles.input, {flex: 1}]} placeholder="Current price ($)" placeholderTextColor={theme.colors.textMuted} value={current} onChangeText={setCurrent} keyboardType="numeric" />
+                    <TextInput style={[styles.input, {flex: 1}]} placeholder="Units (e.g. 1.5)" placeholderTextColor={theme.colors.textMuted} value={units} onChangeText={setUnits} keyboardType="numeric" />
+                    <TextInput style={[styles.input, {flex: 1}]} placeholder={region === 'IN' ? 'Avg Price (₹)' : 'Avg Price ($)'} placeholderTextColor={theme.colors.textMuted} value={avgPrice} onChangeText={setAvgPrice} keyboardType="numeric" />
+                </View>
+
+                <View style={{flexDirection: 'row', gap: 10}}>
+                    <TextInput style={[styles.input, {flex: 1}]} placeholder={region === 'IN' ? 'Invested (₹)' : 'Invested Price ($)'} placeholderTextColor={theme.colors.textMuted} value={invested} onChangeText={v => {
+                        setInvested(v);
+                        if (units && v) setAvgPrice((parseFloat(v) / parseFloat(units)).toFixed(2));
+                    }} keyboardType="numeric" />
+                    <TextInput style={[styles.input, {flex: 1}]} placeholder={region === 'IN' ? 'Current Value (₹)' : 'Current price ($)'} placeholderTextColor={theme.colors.textMuted} value={current} onChangeText={setCurrent} keyboardType="numeric" />
                 </View>
                 
-                <TouchableOpacity style={styles.submitBtn} onPress={handleSave}>
-                  <Text style={styles.submitBtnText}>{editingId ? 'Save Changes' : 'Add Asset'}</Text>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={isSaving}>
+                  {isSaving ? <ActivityIndicator color={theme.colors.navy} /> : <Text style={styles.submitBtnText}>{editingId ? 'Save Options & Validate Ticker' : 'Add Asset & Validate'}</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: theme.colors.navyMid, marginTop: 10 }]} onPress={() => setModalVisible(false)}>
+                
+                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: theme.colors.navyMid, marginTop: 10 }]} onPress={() => setModalVisible(false)} disabled={isSaving}>
                   <Text style={[styles.submitBtnText, { color: theme.colors.textPrimary }]}>Cancel</Text>
                 </TouchableOpacity>
                 <View style={{height: 400}} /> 
@@ -209,6 +298,9 @@ export const PortfolioDetailScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.navy },
+  syncBar: { backgroundColor: theme.colors.navyMid, padding: theme.spacing.m, borderBottomWidth: 1, borderBottomColor: theme.colors.navyLight, flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  syncBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: theme.colors.accent },
+  syncBtnText: { color: theme.colors.accent, fontWeight: 'bold' },
   list: { padding: theme.spacing.m, paddingBottom: 100 },
   headerCard: { backgroundColor: theme.colors.navyMid, padding: 20, borderRadius: theme.borderRadius.m, marginBottom: theme.spacing.xl, borderWidth: 1, borderColor: theme.colors.navyLight },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -233,6 +325,7 @@ const styles = StyleSheet.create({
   typeBtnActive: { backgroundColor: theme.colors.navyLight, borderColor: theme.colors.accent },
   typeBtnText: { color: theme.colors.textMuted, fontWeight: 'bold' },
   typeBtnTextActive: { color: theme.colors.accent },
+  label: { color: theme.colors.textMuted, fontSize: 12, marginBottom: 8, fontWeight: 'bold', textTransform: 'uppercase' },
   input: { borderWidth: 1, borderColor: theme.colors.navyLight, borderRadius: 8, padding: 16, color: theme.colors.textPrimary, marginBottom: 16, backgroundColor: theme.colors.navyMid },
   submitBtn: { backgroundColor: theme.colors.accent, padding: 16, borderRadius: 8, alignItems: 'center' },
   submitBtnText: { color: theme.colors.navy, fontWeight: 'bold', fontSize: 16 }

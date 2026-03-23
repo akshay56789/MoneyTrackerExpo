@@ -38,9 +38,11 @@ export const initDB = () => {
     try { db.execSync(`ALTER TABLE assets ADD COLUMN currentPrice REAL;`); } catch (e) {}
     try { db.execSync(`ALTER TABLE transactions ADD COLUMN name TEXT;`); } catch (e) {}
     
-    // Phase 3 migrations: moving to value-based tracking
+    // Phase 3 migrations: moving to value-based tracking & region & caching
     try { db.execSync(`ALTER TABLE assets ADD COLUMN totalInvested REAL DEFAULT 0;`); } catch (e) {}
     try { db.execSync(`ALTER TABLE assets ADD COLUMN currentValue REAL DEFAULT 0;`); } catch (e) {}
+    try { db.execSync(`ALTER TABLE assets ADD COLUMN region TEXT DEFAULT 'US';`); } catch (e) {}
+    try { db.execSync(`ALTER TABLE assets ADD COLUMN dailyChangePercent REAL DEFAULT 0;`); } catch (e) {}
 };
 
 export const getPortfolios = (): Portfolio[] => {
@@ -76,10 +78,14 @@ export const getAllAssets = (): Asset[] => {
 export const createAsset = (asset: Asset): number => {
     const invested = asset.totalInvested || 0;
     const value = asset.currentValue || 0;
+    const region = asset.region || 'US';
+    const dCache = asset.dailyChangePercent || 0;
+    const units = asset.totalUnits || 0;
+    const avgCost = asset.averageCost || 0;
     
     const result = db.runSync(
-        `INSERT INTO assets (portfolioId, tickerSymbol, name, assetType, totalInvested, currentValue, totalUnits, averageCost) VALUES (?, ?, ?, ?, ?, ?, 1, 0);`,
-        asset.portfolioId, asset.tickerSymbol, asset.name || '', asset.assetType, invested, value
+        `INSERT INTO assets (portfolioId, tickerSymbol, name, assetType, region, totalInvested, currentValue, totalUnits, averageCost, dailyChangePercent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        asset.portfolioId, asset.tickerSymbol, asset.name || '', asset.assetType, region, invested, value, units, avgCost, dCache
     );
     return result.lastInsertRowId;
 };
@@ -87,10 +93,14 @@ export const createAsset = (asset: Asset): number => {
 export const updateAsset = (id: number, asset: Asset): void => {
     const invested = asset.totalInvested || 0;
     const value = asset.currentValue || 0;
+    const region = asset.region || 'US';
+    const dCache = asset.dailyChangePercent || 0;
+    const units = asset.totalUnits || 0;
+    const avgCost = asset.averageCost || 0;
     
     db.runSync(
-        `UPDATE assets SET tickerSymbol = ?, name = ?, assetType = ?, totalInvested = ?, currentValue = ?, totalUnits = 1, averageCost = 0 WHERE id = ?;`,
-        asset.tickerSymbol, asset.name || '', asset.assetType, invested, value, id
+        `UPDATE assets SET tickerSymbol = ?, name = ?, assetType = ?, region = ?, totalInvested = ?, currentValue = ?, dailyChangePercent = ?, totalUnits = ?, averageCost = ? WHERE id = ?;`,
+        asset.tickerSymbol, asset.name || '', asset.assetType, region, invested, value, dCache, units, avgCost, id
     );
 }
 
@@ -99,7 +109,6 @@ export const deleteAsset = (id: number, portfolioId: number, tickerSymbol: strin
     db.runSync(`DELETE FROM transactions WHERE portfolioId = ? AND tickerSymbol = ?;`, portfolioId, tickerSymbol);
 };
 
-// ... Transactions remain unchanged ...
 export const getTransactions = (portfolioId?: number): Transaction[] => {
     if (portfolioId) {
         return db.getAllSync<Transaction>(

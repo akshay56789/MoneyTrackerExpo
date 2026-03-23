@@ -11,9 +11,13 @@ export interface Asset {
   portfolioId: number;
   tickerSymbol: string;
   name?: string;
+  region: 'US' | 'IN';
   assetType: AssetType;
+  totalUnits: number;
+  averageCost: number;
   totalInvested: number;
   currentValue: number;
+  dailyChangePercent?: number;
 }
 
 export interface PriceData {

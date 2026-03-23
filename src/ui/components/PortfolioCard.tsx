@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { Portfolio } from '../../models/types';
 import { useStore } from '../../store/store';
+import { useSettingsStore } from '../../store/settingsStore';
 import { theme } from '../theme';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export const PortfolioCard = ({ portfolio, onPress, onEdit }: Props) => {
+  const { usdToInr } = useSettingsStore();
   const { assets, livePrices } = useStore();
 
   const stats = useMemo(() => {
@@ -26,14 +28,21 @@ export const PortfolioCard = ({ portfolio, onPress, onEdit }: Props) => {
     let mfs = 0;
 
     portAssets.forEach(a => {
-      invested += a.totalInvested;
-      current += a.currentValue;
+      const isInr = a.region === 'IN';
+      // Home screen card defaults to USD view, so convert INR assets to USD for the total
+      const investedVal = isInr ? (a.totalInvested / usdToInr) : a.totalInvested;
+      const currentVal = isInr ? (a.currentValue / usdToInr) : a.currentValue;
+
+      invested += investedVal;
+      current += currentVal;
       
       const price = livePrices[a.tickerSymbol];
-      if (price && price.dailyChangePercent !== undefined) {
-        previous += a.currentValue - (a.currentValue * (price.dailyChangePercent / 100));
+      const dailyChange = price?.dailyChangePercent || a.dailyChangePercent || 0;
+      
+      if (dailyChange !== 0) {
+        previous += currentVal - (currentVal * (dailyChange / 100));
       } else {
-        previous += a.currentValue;
+        previous += currentVal;
       }
 
       if (a.assetType === 'Stock') stocks++;
@@ -47,7 +56,7 @@ export const PortfolioCard = ({ portfolio, onPress, onEdit }: Props) => {
     const dayChangePercent = previous > 0 ? (dayChange / previous) * 100 : 0;
 
     return { invested, current, gainPercent, dayChange, dayChangePercent, counts: { stocks, etfs, mfs } };
-  }, [portfolio.id, assets, livePrices]);
+  }, [portfolio.id, assets, livePrices, usdToInr]);
 
   const isPositive = stats.dayChange >= 0;
 

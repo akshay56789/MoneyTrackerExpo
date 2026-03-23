@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput } from 'react-native';
 import { useStore } from '../../store/store';
 import { PortfolioCard } from '../components/PortfolioCard';
+import { Sidebar } from '../components/Sidebar';
 import { theme } from '../theme';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import { Feather } from '@expo/vector-icons';
 
 type PortfoliosScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Portfolios'>;
 
@@ -13,6 +15,7 @@ export const PortfoliosScreen = () => {
   const { portfolios, addPortfolio, editPortfolio } = useStore();
   const navigation = useNavigation<PortfoliosScreenNavigationProp>();
   
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -41,12 +44,17 @@ export const PortfoliosScreen = () => {
     }
   };
 
-  const navToTransactions = () => {
-    navigation.navigate('Transactions', {});
-  };
-
   return (
     <View style={styles.container}>
+      {/* Custom Header */}
+      <View style={styles.appHeader}>
+        <TouchableOpacity style={styles.hamburgerBtn} onPress={() => setSidebarOpen(true)}>
+          <Feather name="menu" size={22} color={theme.colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.appTitle}>MoneyTracker</Text>
+        <View style={{ width: 38 }} />
+      </View>
+
       <FlatList
         data={portfolios}
         keyExtractor={p => p.id!.toString()}
@@ -60,15 +68,6 @@ export const PortfoliosScreen = () => {
         )}
         ListEmptyComponent={<Text style={styles.emptyText}>No portfolios yet. Create one!</Text>}
       />
-
-      <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.tabBtn} onPress={() => {}}>
-          <Text style={[styles.tabText, { color: theme.colors.accent }]}>Portfolios</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tabBtn} onPress={navToTransactions}>
-          <Text style={styles.tabText}>History</Text>
-        </TouchableOpacity>
-      </View>
 
       <TouchableOpacity style={styles.fab} onPress={openCreateModal}>
         <Text style={styles.fabIcon}>+</Text>
@@ -98,23 +97,37 @@ export const PortfoliosScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Sidebar Overlay */}
+      <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.navy },
+  appHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: theme.colors.navy,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.navyLight,
+  },
+  hamburgerBtn: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: theme.colors.navyMid,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: theme.colors.navyLight,
+  },
+  appTitle: { color: theme.colors.textPrimary, fontSize: 20, fontWeight: 'bold' },
   list: { padding: theme.spacing.m, paddingBottom: 100 },
   emptyText: { color: theme.colors.textMuted, textAlign: 'center', marginTop: 40 },
-  bottomBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    flexDirection: 'row', backgroundColor: theme.colors.navyMid,
-    paddingBottom: 20, paddingTop: 10, borderTopWidth: 1, borderTopColor: theme.colors.navyLight
-  },
-  tabBtn: { flex: 1, alignItems: 'center' },
-  tabText: { color: theme.colors.textMuted, fontWeight: 'bold' },
   fab: { 
-    position: 'absolute', bottom: 80, right: 20, 
+    position: 'absolute', bottom: 30, right: 20, 
     width: 60, height: 60, borderRadius: 30, 
     backgroundColor: theme.colors.accent, alignItems: 'center', justifyContent: 'center', 
     elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3 
