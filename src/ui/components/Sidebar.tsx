@@ -1,12 +1,13 @@
 import React, { useRef } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    Animated, Dimensions, TouchableWithoutFeedback
+    Animated, Dimensions, TouchableWithoutFeedback, ActivityIndicator
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import { useStore } from '../../store/store';
 import { theme } from '../theme';
 
 const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.72;
@@ -48,6 +49,7 @@ interface Props {
 
 export const Sidebar = ({ visible, onClose }: Props) => {
     const navigation = useNavigation<NavigationProp>();
+    const { syncToCloud, cloudSyncing, lastCloudSync } = useStore();
     const translateX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
     React.useEffect(() => {
@@ -107,6 +109,30 @@ export const Sidebar = ({ visible, onClose }: Props) => {
                         </TouchableOpacity>
                     ))}
                 </View>
+
+                <View style={styles.divider} />
+
+                {/* Cloud Backup Button */}
+                <TouchableOpacity
+                    style={styles.cloudBtn}
+                    onPress={syncToCloud}
+                    disabled={cloudSyncing}
+                    activeOpacity={0.7}
+                >
+                    <View style={[styles.menuIconCircle, { backgroundColor: 'rgba(0,176,255,0.1)' }]}>
+                        {cloudSyncing
+                            ? <ActivityIndicator size="small" color="#00B0FF" />
+                            : <Feather name="upload-cloud" size={18} color="#00B0FF" />
+                        }
+                    </View>
+                    <View style={styles.menuText}>
+                        <Text style={styles.menuLabel}>{cloudSyncing ? 'Syncing...' : 'Backup to Cloud'}</Text>
+                        <Text style={styles.menuSublabel}>
+                            {lastCloudSync ? `Last: ${lastCloudSync}` : 'Push data to Supabase'}
+                        </Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color={theme.colors.textMuted} />
+                </TouchableOpacity>
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Powered by Finnhub & AlphaVantage</Text>
@@ -209,6 +235,14 @@ const styles = StyleSheet.create({
         color: theme.colors.textMuted,
         fontSize: 11,
         marginTop: 2,
+    },
+    cloudBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 24,
+        marginBottom: 8,
     },
     footer: {
         paddingHorizontal: 20,
