@@ -113,6 +113,7 @@ export const Sidebar = ({ visible, onClose }: Props) => {
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Powered by Finnhub & AlphaVantage</Text>
+                    <Text style={[styles.footerText, { marginTop: 4, color: theme.colors.accent, fontWeight: 'bold' }]}>Made by Akshay Bhisikar</Text>
                 </View>
             </Animated.View>
         </View>

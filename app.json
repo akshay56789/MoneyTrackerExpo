@@ -9,8 +9,14 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.akshaybhisikar.moneytrackerexpo",
       "adaptiveIcon": {
         "backgroundColor": "#0A192F"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f739feac-f87e-4227-8e5e-2973913e98a2"
       }
     }
   }
