@@ -1,12 +1,11 @@
 import { create } from 'zustand';
 import { Asset, Portfolio, PriceData, Transaction } from '../models/types';
 import {
-    getPortfolios, createPortfolio, updatePortfolio,
+    getPortfolios, createPortfolio, updatePortfolio, deletePortfolio,
     getAllAssets, createAsset, updateAsset, deleteAsset,
     getTransactions, createTransaction, updateTransaction, deleteTransaction
 } from '../db/DatabaseService';
 import { PriceService } from '../services/PriceService';
-import { pushToCloud } from '../services/SupabaseService';
 import { Alert } from 'react-native';
 
 interface AppState {
@@ -16,11 +15,10 @@ interface AppState {
     livePrices: Record<string, PriceData>;
     loading: boolean;
     syncing: boolean;
-    cloudSyncing: boolean;
-    lastCloudSync: string | null;
     loadData: () => void;
     addPortfolio: (name: string) => void;
     editPortfolio: (id: number, name: string) => void;
+    removePortfolio: (id: number) => void;
     addAsset: (asset: Asset) => Promise<void>;
     editAsset: (id: number, asset: Asset) => Promise<void>;
     removeAsset: (id: number, portfolioId: number, tickerSymbol: string) => void;
@@ -28,7 +26,6 @@ interface AppState {
     editTransaction: (id: number, tx: Transaction) => void;
     removeTransaction: (id: number) => void;
     syncPrices: () => Promise<void>;
-    syncToCloud: () => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -38,8 +35,6 @@ export const useStore = create<AppState>((set, get) => ({
     livePrices: {},
     loading: true,
     syncing: false,
-    cloudSyncing: false,
-    lastCloudSync: null,
 
     loadData: () => {
         set({ loading: true });
@@ -129,6 +124,16 @@ export const useStore = create<AppState>((set, get) => ({
         set({ portfolios: getPortfolios() });
     },
 
+    removePortfolio: (id: number) => {
+        deletePortfolio(id);
+        const { assets, transactions, portfolios } = get();
+        set({ 
+            portfolios: portfolios.filter(p => p.id !== id), 
+            assets: assets.filter(a => a.portfolioId !== id),
+            transactions: transactions.filter(t => t.portfolioId !== id)
+        });
+    },
+
     addAsset: async (asset: Asset) => {
         try {
             // Test API connection immediately
@@ -216,22 +221,6 @@ export const useStore = create<AppState>((set, get) => ({
                 "Sync Complete with Errors", 
                 "Some assets failed to sync. Please ensure their tickers and regions are correct."
             );
-        }
-    },
-
-    syncToCloud: async () => {
-        set({ cloudSyncing: true });
-        const { portfolios, assets, transactions } = get();
-
-        const result = await pushToCloud(portfolios, assets, transactions);
-
-        if (result.success) {
-            const now = new Date().toLocaleString();
-            set({ cloudSyncing: false, lastCloudSync: now });
-            Alert.alert('Cloud Sync Complete ☁️', `All data backed up to Supabase at ${now}`);
-        } else {
-            set({ cloudSyncing: false });
-            Alert.alert('Cloud Sync Failed', result.error || 'Unknown error occurred.');
         }
     }
 }));

@@ -64,6 +64,12 @@ export const updatePortfolio = (id: number, name: string): void => {
     );
 };
 
+export const deletePortfolio = (id: number): void => {
+    db.runSync(`DELETE FROM portfolios WHERE id = ?;`, id);
+    db.runSync(`DELETE FROM assets WHERE portfolioId = ?;`, id);
+    db.runSync(`DELETE FROM transactions WHERE portfolioId = ?;`, id);
+};
+
 export const getAssetsByPortfolio = (portfolioId: number): Asset[] => {
     return db.getAllSync<Asset>(
         `SELECT * FROM assets WHERE portfolioId = ?;`,

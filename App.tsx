@@ -8,15 +8,27 @@ import { initDB } from './src/db/DatabaseService';
 import { useStore } from './src/store/store';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { theme } from './src/ui/theme';
+import { hasPinEnabled } from './src/store/secureStore';
+import { PinLockScreen } from './src/ui/screens/PinLockScreen';
 
 export default function App() {
   const { loading, loadData } = useStore();
   const [dbReady, setDbReady] = React.useState(false);
+  const [isLocked, setIsLocked] = React.useState(false);
 
   useEffect(() => {
-    initDB();
-    setDbReady(true);
-    loadData();
+    const initApp = async () => {
+        initDB();
+        setDbReady(true);
+        loadData();
+        
+        // Security check
+        const pinActive = await hasPinEnabled();
+        if (pinActive) {
+            setIsLocked(true);
+        }
+    };
+    initApp();
   }, []);
 
   if (!dbReady || loading) {
@@ -26,6 +38,10 @@ export default function App() {
         <StatusBar style="light" />
       </View>
     );
+  }
+
+  if (isLocked) {
+      return <PinLockScreen onUnlock={() => setIsLocked(false)} />;
   }
 
   return (

@@ -49,7 +49,6 @@ interface Props {
 
 export const Sidebar = ({ visible, onClose }: Props) => {
     const navigation = useNavigation<NavigationProp>();
-    const { syncToCloud, cloudSyncing, lastCloudSync } = useStore();
     const translateX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
     React.useEffect(() => {
@@ -111,28 +110,6 @@ export const Sidebar = ({ visible, onClose }: Props) => {
                 </View>
 
                 <View style={styles.divider} />
-
-                {/* Cloud Backup Button */}
-                <TouchableOpacity
-                    style={styles.cloudBtn}
-                    onPress={syncToCloud}
-                    disabled={cloudSyncing}
-                    activeOpacity={0.7}
-                >
-                    <View style={[styles.menuIconCircle, { backgroundColor: 'rgba(0,176,255,0.1)' }]}>
-                        {cloudSyncing
-                            ? <ActivityIndicator size="small" color="#00B0FF" />
-                            : <Feather name="upload-cloud" size={18} color="#00B0FF" />
-                        }
-                    </View>
-                    <View style={styles.menuText}>
-                        <Text style={styles.menuLabel}>{cloudSyncing ? 'Syncing...' : 'Backup to Cloud'}</Text>
-                        <Text style={styles.menuSublabel}>
-                            {lastCloudSync ? `Last: ${lastCloudSync}` : 'Push data to Supabase'}
-                        </Text>
-                    </View>
-                    <Feather name="chevron-right" size={16} color={theme.colors.textMuted} />
-                </TouchableOpacity>
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Powered by Finnhub & AlphaVantage</Text>

@@ -20,7 +20,10 @@ export const Dashboard = () => {
           tickerSymbol: ticker.toUpperCase(),
           assetType: AssetType.Stock,
           totalUnits: parseFloat(units),
-          averageCost: parseFloat(cost)
+          averageCost: parseFloat(cost),
+          region: 'US',
+          totalInvested: parseFloat(units) * parseFloat(cost),
+          currentValue: parseFloat(units) * parseFloat(cost)
       });
       setTicker('');
       setUnits('');

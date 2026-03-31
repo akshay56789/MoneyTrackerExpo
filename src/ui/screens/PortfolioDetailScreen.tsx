@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useStore } from '../../store/store';
+import { PriceService } from '../../services/PriceService';
 import { AssetRow } from '../components/AssetRow';
 import { DonutChart } from '../components/DonutChart';
 import { theme } from '../theme';
@@ -14,8 +15,9 @@ type DetailRouteProp = RouteProp<RootStackParamList, 'PortfolioDetail'>;
 
 export const PortfolioDetailScreen = () => {
   const route = useRoute<DetailRouteProp>();
+  const navigation = useNavigation();
   const { portfolioId } = route.params;
-  const { assets, livePrices, addAsset, editAsset, removeAsset, syncPrices, syncing } = useStore();
+  const { assets, livePrices, addAsset, editAsset, removeAsset, removePortfolio, syncPrices, syncing } = useStore();
 
   const { usdToInr } = useSettingsStore();
   const [showInInr, setShowInInr] = useState(false);
@@ -31,6 +33,11 @@ export const PortfolioDetailScreen = () => {
   const [type, setType] = useState<AssetType>(AssetType.Stock);
   const [region, setRegion] = useState<'US' | 'IN'>('US');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{symbol: string, name: string, type: string}[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const portfolioAssets = assets.filter(a => a.portfolioId === portfolioId);
 
@@ -95,6 +102,7 @@ export const PortfolioDetailScreen = () => {
       setTicker(''); setName(''); setInvested(''); setCurrent('');
       setUnits(''); setAvgPrice('');
       setType(AssetType.Stock); setRegion('US');
+      setSearchQuery(''); setSearchResults([]);
       setModalVisible(true);
   };
 
@@ -108,7 +116,38 @@ export const PortfolioDetailScreen = () => {
       setAvgPrice(a.averageCost.toString());
       setType(a.assetType);
       setRegion(a.region);
+      setSearchQuery(''); setSearchResults([]);
       setModalVisible(true);
+  };
+
+  const handleDeletePortfolio = () => {
+      Alert.alert("Delete Portfolio", "Are you sure? This will delete the portfolio and all its assets permanently. This action cannot be undone.", [
+          { text: "Cancel", style: "cancel" },
+          { text: "Yes, Delete", style: "destructive", onPress: () => {
+              removePortfolio(portfolioId);
+              navigation.goBack();
+          }}
+      ]);
+  };
+
+  const handleSearchTicker = async () => {
+      if (!searchQuery.trim()) return;
+      setIsSearching(true);
+      try {
+          const res = await PriceService.searchTicker(searchQuery, region);
+          setSearchResults(res);
+      } catch (e) {
+          Alert.alert("Search Error", "Failed to search ticker");
+      } finally {
+          setIsSearching(false);
+      }
+  };
+
+  const selectSearchResult = (item: {symbol: string, name: string, type: string}) => {
+      setTicker(item.symbol);
+      setName(item.name);
+      setSearchResults([]);
+      setSearchQuery('');
   };
 
   const handleSave = async () => {
@@ -158,15 +197,13 @@ export const PortfolioDetailScreen = () => {
       <View style={styles.syncBar}>
           <TouchableOpacity style={styles.syncBtn} onPress={syncPrices} disabled={syncing}>
               {syncing ? <ActivityIndicator color={theme.colors.accent} size="small" /> : <Feather name="refresh-cw" size={16} color={theme.colors.accent} />}
-              <Text style={styles.syncBtnText}>{syncing ? "Syncing APIs..." : "Sync Live Prices"}</Text>
+              <Text style={styles.syncBtnText}>{syncing ? "Syncing..." : "Sync Prices"}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-              style={[styles.syncBtn, { marginLeft: 8, borderColor: showInInr ? '#FFA726' : theme.colors.navyLight }]}
-              onPress={() => setShowInInr(v => !v)}
-          >
-              <Text style={[styles.syncBtnText, { color: showInInr ? '#FFA726' : theme.colors.textMuted }]}>
-                  {showInInr ? '₹ INR View' : '$ → ₹'}
-              </Text>
+          <TouchableOpacity style={[styles.syncBtn, { borderColor: showInInr ? '#FFA726' : theme.colors.navyLight }]} onPress={() => setShowInInr(v => !v)}>
+              <Text style={[styles.syncBtnText, { color: showInInr ? '#FFA726' : theme.colors.textMuted }]}>{showInInr ? '₹ INR View' : '$ → ₹'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteBtn} onPress={handleDeletePortfolio}>
+              <Feather name="trash-2" size={18} color="#FF5252" />
           </TouchableOpacity>
       </View>
 
@@ -264,6 +301,34 @@ export const PortfolioDetailScreen = () => {
                   ))}
                 </View>
 
+                {/* Inline Search */}
+                {!editingId && (
+                <View style={{flexDirection: 'row', gap: 10, marginBottom: 16}}>
+                    <TextInput 
+                        style={[styles.input, {flex: 1, marginBottom: 0}]} 
+                        placeholder={region === 'US' ? 'Search AAPL, TSLA...' : 'Search RELIANCE, TCS...'} 
+                        placeholderTextColor={theme.colors.textMuted} 
+                        value={searchQuery} 
+                        onChangeText={setSearchQuery} 
+                        onSubmitEditing={handleSearchTicker}
+                    />
+                    <TouchableOpacity style={styles.searchInlineBtn} onPress={handleSearchTicker} disabled={isSearching}>
+                        {isSearching ? <ActivityIndicator size="small" color={theme.colors.navy} /> : <Feather name="search" size={20} color={theme.colors.navy} />}
+                    </TouchableOpacity>
+                </View>
+                )}
+
+                {searchResults.length > 0 && (
+                    <View style={styles.searchResultsContainer}>
+                        {searchResults.slice(0, 5).map((res, i) => (
+                            <TouchableOpacity key={`${res.symbol}-${i}`} style={styles.searchResultItem} onPress={() => selectSearchResult(res)}>
+                                <Text style={styles.searchResultSymbol}>{res.symbol}</Text>
+                                <Text style={styles.searchResultName} numberOfLines={1}>{res.name}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+
                 <TextInput style={styles.input} placeholder="Stockname (e.g. Apple Inc)" placeholderTextColor={theme.colors.textMuted} value={name} onChangeText={setName} />
                 <TextInput style={styles.input} placeholder="Symbol/Ticker (e.g. AAPL)" placeholderTextColor={theme.colors.textMuted} value={ticker} onChangeText={setTicker} autoCapitalize="characters" />
                 
@@ -328,5 +393,11 @@ const styles = StyleSheet.create({
   label: { color: theme.colors.textMuted, fontSize: 12, marginBottom: 8, fontWeight: 'bold', textTransform: 'uppercase' },
   input: { borderWidth: 1, borderColor: theme.colors.navyLight, borderRadius: 8, padding: 16, color: theme.colors.textPrimary, marginBottom: 16, backgroundColor: theme.colors.navyMid },
   submitBtn: { backgroundColor: theme.colors.accent, padding: 16, borderRadius: 8, alignItems: 'center' },
-  submitBtnText: { color: theme.colors.navy, fontWeight: 'bold', fontSize: 16 }
+  submitBtnText: { color: theme.colors.navy, fontWeight: 'bold', fontSize: 16 },
+  deleteBtn: { padding: 10, backgroundColor: 'rgba(255,82,82,0.1)', borderRadius: 20 },
+  searchInlineBtn: { backgroundColor: theme.colors.accent, width: 56, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  searchResultsContainer: { backgroundColor: theme.colors.navyMid, borderColor: theme.colors.accent, borderWidth: 1, borderRadius: 8, marginBottom: 16 },
+  searchResultItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.navyLight, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchResultSymbol: { color: theme.colors.textPrimary, fontWeight: 'bold', width: 80 },
+  searchResultName: { color: theme.colors.textMuted, flex: 1 }
 });

@@ -82,4 +82,38 @@ export class PriceService {
         throw error;
       }
   }
+  static async searchTicker(query: string, region: 'US' | 'IN'): Promise<{ symbol: string, name: string, type: string }[]> {
+      const trimmed = query.trim();
+      if (!trimmed) return [];
+
+      try {
+          if (region === 'US') {
+              if (!this.finnhubApiKey) throw new Error("Missing Finnhub API Key");
+              const url = `https://finnhub.io/api/v1/search?q=${encodeURIComponent(trimmed)}&token=${this.finnhubApiKey}`;
+              const res = await fetch(url);
+              const json = await res.json();
+              if (json.result && json.result.length > 0) {
+                  return json.result.map((item: any) => ({
+                      symbol: item.symbol,
+                      name: item.description,
+                      type: item.type
+                  }));
+              }
+          } else {
+              const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(trimmed)}&apikey=${this.alphaApiKey}`;
+              const res = await fetch(url);
+              const json = await res.json();
+              if (json.bestMatches && json.bestMatches.length > 0) {
+                  return json.bestMatches.map((item: any) => ({
+                      symbol: item['1. symbol'],
+                      name: item['2. name'],
+                      type: item['3. type']
+                  }));
+              }
+          }
+      } catch (e) {
+          console.error("Search API Error:", e);
+      }
+      return [];
+  }
 }
